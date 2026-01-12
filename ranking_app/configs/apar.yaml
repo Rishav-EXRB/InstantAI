@@ -1,0 +1,55 @@
+dataset:
+  name: apar_sales
+
+entities:
+  customer:
+    column: customer
+
+  sku:
+    column: material
+
+  sales_manager:
+    column: sales_manager
+
+  region:
+    column: reg_desc
+
+schema:
+  normalize_columns: true
+
+derived_metrics:
+  gross_margin:
+    formula: total_value - total_variable_cost
+
+  margin_pct:
+    formula: gross_margin / total_value
+
+  freight_pct:
+    formula: freight_incurred / total_value
+
+ranking:
+  metrics:
+    revenue:
+      column: revenue
+      direction: high
+      weight: 0.30
+
+    margin_pct:
+      column: margin_pct
+      direction: high
+      weight: 0.25
+
+    freight_pct:
+      column: freight_pct
+      direction: low
+      weight: 0.15
+
+    credit_days:
+      column: credit_days
+      direction: low
+      weight: 0.20
+
+    discount:
+      column: discount
+      direction: low
+      weight: 0.10
