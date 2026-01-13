@@ -14,6 +14,12 @@ from core.deltas import compute_rank_delta
 from core.improve import improvement_plan
 from core.learn_weights import learn_metric_weights
 
+from agents.chat_analyst import ChatAnalyst
+from agents.tools.web_enrichment import WebEnrichmentTool
+
+analyst = ChatAnalyst()
+web_tool = WebEnrichmentTool()
+
 st.set_page_config(
     page_title="Universal Ranking Engine",
     layout="wide"
@@ -27,6 +33,9 @@ if "use_ml_weights" not in st.session_state:
 
 if "ml_weights" not in st.session_state:
     st.session_state.ml_weights = {}
+
+if "chat_history" not in st.session_state:
+    st.session_state.chat_history = []
 
 # =================================================
 # Load config
@@ -160,6 +169,27 @@ ranking = compute_rank_delta(
 )
 
 # =================================================
+# SIDEBAR — CHAT ANALYST
+# =================================================
+st.sidebar.divider()
+st.sidebar.subheader("💬 AI Investigation")
+
+for msg in st.session_state.chat_history:
+    with st.sidebar.chat_message(msg["role"]):
+        st.write(msg["content"])
+
+if prompt := st.sidebar.chat_input("Ask about rankings..."):
+    st.session_state.chat_history.append({"role": "user", "content": prompt})
+    with st.sidebar.chat_message("user"):
+        st.write(prompt)
+    
+    with st.sidebar.chat_message("assistant"):
+        with st.spinner("Analyzing..."):
+            response = analyst.analyze(prompt, ranking, entity_key, config)
+            st.write(response)
+            st.session_state.chat_history.append({"role": "assistant", "content": response})
+
+# =================================================
 # MAIN UI
 # =================================================
 st.title("Universal Ranking Engine")
@@ -238,8 +268,22 @@ st.write(f"Rank change: {row['rank_change']}")
 # Key drivers
 # -------------------------------------------------
 st.markdown("### Key Drivers")
-for e in explain_entity(row, runtime_metrics):
-    st.write("•", e)
+col_e1, col_e2 = st.columns([3, 1])
+with col_e1:
+    for e in explain_entity(row, runtime_metrics):
+        st.write("•", e)
+
+with col_e2:
+    if st.button("✨ Why Trace"):
+        with st.spinner("Reasoning..."):
+            trace = analyst.generate_why_trace(entity, row, runtime_metrics)
+            st.info(trace)
+
+if st.button("🌐 Search Market Context"):
+    with st.spinner(f"Searching web for {entity}..."):
+        result = web_tool.search_entity_sentiment(entity)
+        st.success(f"**{result['signal']}**")
+        st.caption(f"Source: {result['source']} | Web Sentiment Score: {result['web_score']}")
 
 # -------------------------------------------------
 # VISUAL 2: METRIC CONTRIBUTIONS
