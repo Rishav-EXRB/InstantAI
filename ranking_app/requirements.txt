@@ -1,7 +1,0 @@
-pandas
-streamlit
-plotly
-pyyaml
-groq
-python-dotenv
-scikit-learn
