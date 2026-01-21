@@ -12,6 +12,13 @@ from pipeline.stage_04_metric_map import (
     map_metrics_to_features
 )
 from pipeline.stage_07_rank import rank_entities
+from pipeline.stage_08_explain import generate_explanations
+from pipeline.stage_09_pca import generate_pca_data
+
+from utils.mongo_cache import (
+    fetch_cached_result,
+    save_cached_result
+)
 
 app = FastAPI()
 
@@ -33,13 +40,14 @@ def rank_dataset(
     query: str = Query(...),
     file: UploadFile = File(...)
 ):
-    # ---- Save uploaded file ----
+
+    # ---------------- SAVE FILE ----------------
     with tempfile.NamedTemporaryFile(delete=False) as tmp:
         file.file.seek(0)
         shutil.copyfileobj(file.file, tmp)
         path = tmp.name
 
-    # ---- Robust CSV read ----
+    # ---------------- READ CSV ----------------
     try:
         df = pd.read_csv(path, encoding="utf-8")
     except Exception:
@@ -51,38 +59,66 @@ def rank_dataset(
             "details": "Uploaded dataset is empty"
         }
 
-    # ---- Audit ----
+    # ---------------- CACHE LOOKUP ----------------
+    cached = fetch_cached_result(query, df)
+    if cached:
+        return cached
+
+    # ---------------- AUDIT ----------------
     audit = audit_dataset(df)
 
-    # ---- Intent ----
+    # ---------------- INTENT ----------------
     intent = infer_intent(query)
 
-    # ---- Entity resolution ----
+    # ---------------- ENTITY ----------------
     entity_column = resolve_entity_column(
         intent.entity_column,
         audit
     )
 
-    # ---- Feature generation ----
+    # ---------------- FEATURES ----------------
     features = generate_features(audit)
 
-    # ---- Metric mapping ----
+    # ---------------- METRIC MAP ----------------
     metric_map = map_metrics_to_features(
         intent,
         audit,
         features
     )
 
-    # ---- Ranking ----
+    # ---------------- RANKING ----------------
     ranked = rank_entities(
         audit.df,
         entity_column,
         metric_map
     )
 
+    # ---------------- EXPLANATIONS ----------------
+    explanations = generate_explanations(
+        audit.df,
+        ranked,
+        entity_column,
+        metric_map
+    )
+
+    # ---------------- PCA ----------------
+    pca_data = generate_pca_data(
+        audit.df,
+        entity_column,
+        metric_map,
+        ranked
+    )
+
     response = {
         "entity_column": entity_column,
-        "rankings": ranked.to_dict(orient="records")
+        "rankings": ranked.to_dict(orient="records"),
+        "explanations": explanations,
+        "pca": pca_data
     }
 
-    return sanitize(response)
+    response = sanitize(response)
+
+    # ---------------- SAVE TO MONGO ----------------
+    save_cached_result(query, df, response)
+
+    return response
