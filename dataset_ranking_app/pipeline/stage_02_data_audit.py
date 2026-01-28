@@ -1,5 +1,6 @@
 import pandas as pd
 from dataclasses import dataclass
+from typing import Union
 
 
 @dataclass
@@ -7,41 +8,50 @@ class DatasetAudit:
     df: pd.DataFrame
     columns: list
     numeric_columns: list
-    categorical_columns: list
-    row_count: int
+    text_columns: list
 
 
-def audit_dataset(input_data):
-    # ---- CASE 1: DataFrame passed directly ----
-    if isinstance(input_data, pd.DataFrame):
-        df = input_data.copy()
+def audit_dataset(source: Union[str, pd.DataFrame]) -> DatasetAudit:
+    """
+    Accepts either:
+    - file path (str)
+    - pandas DataFrame
 
-    # ---- CASE 2: File path passed ----
-    elif isinstance(input_data, str):
+    This prevents accidental type errors across pipeline stages.
+    """
+
+    # ---------- LOAD DATA ----------
+    if isinstance(source, pd.DataFrame):
+        df = source.copy()
+
+    elif isinstance(source, str):
         try:
-            df = pd.read_csv(input_data, encoding="utf-8")
+            df = pd.read_csv(source, encoding="utf-8")
         except Exception:
-            df = pd.read_csv(input_data, encoding="latin1")
+            df = pd.read_csv(source, encoding="latin1")
 
     else:
         raise TypeError(
-            "audit_dataset expects a pandas DataFrame or a file path"
+            f"audit_dataset expected str or DataFrame, got {type(source)}"
         )
 
-    if df.empty:
-        raise ValueError("Dataset is empty")
+    # ---------- VALIDATION ----------
+    if df.empty or len(df.columns) == 0:
+        raise ValueError("Uploaded dataset is empty or invalid")
 
-    df.columns = [c.strip() for c in df.columns]
+    # ---------- COLUMN CLASSIFICATION ----------
+    numeric_columns = []
+    text_columns = []
 
-    numeric_columns = df.select_dtypes(include="number").columns.tolist()
-    categorical_columns = [
-        c for c in df.columns if c not in numeric_columns
-    ]
+    for col in df.columns:
+        if pd.api.types.is_numeric_dtype(df[col]):
+            numeric_columns.append(col)
+        else:
+            text_columns.append(col)
 
     return DatasetAudit(
         df=df,
-        columns=df.columns.tolist(),
+        columns=list(df.columns),
         numeric_columns=numeric_columns,
-        categorical_columns=categorical_columns,
-        row_count=len(df)
+        text_columns=text_columns
     )
